@@ -1,5 +1,17 @@
 ## kubefire -  NetApp HCI or SolidFire storage cluster failover and failback for Trident CSI consumers
 
+- [kubefire -  NetApp HCI or SolidFire storage cluster failover and failback for Trident CSI consumers](#kubefire----netapp-hci-or-solidfire-storage-cluster-failover-and-failback-for-trident-csi-consumers)
+- [Introduction](#introduction)
+- [Scenarios](#scenarios)
+  - [Two Kubernetes-SolidFire pairs (recommended)](#two-kubernetes-solidfire-pairs-recommended)
+  - [Single Kubernetes cluster attached to two SolidFire storage clusters (not recommended)](#single-kubernetes-cluster-attached-to-two-solidfire-storage-clusters-not-recommended)
+- [Tools and how to use them](#tools-and-how-to-use-them)
+  - [Single source of truth: Kubernetes, Trident CSI or SolidFire](#single-source-of-truth-kubernetes-trident-csi-or-solidfire)
+- [Process of failover and failback with Kubernetes-SolidFire pairs](#process-of-failover-and-failback-with-kubernetes-solidfire-pairs)
+- [Process of failover and failback with single Kubernetes cluster](#process-of-failover-and-failback-with-single-kubernetes-cluster)
+- [Backup and restore integrations](#backup-and-restore-integrations)
+
+
 ## Introduction
 
 Even in mid 2024 SolidFire is still the best NetApp storage for Kubernetes.
