@@ -103,14 +103,16 @@ To failover, we simply reverse the direction of replication, add the remote SoOl
 One strange thing about failback is that it makes sense to reinstall Trident, rather than adjust Trident backends. There are two reasons for this:
 
 - After failover (to the remote site), Trident backend delete (of the failed SolidFire cluster from the main site) doesn't complete which doesn't matter for failover but does leave the backend state stuck in `deleting`
-- On failback, we cannot add the original SolidFire back-end fromthe main site because the same back-end is stuck in `deleting`
+- On failback, we cannot add the original SolidFire back-end from the main site because the same back-end is stuck in `deleting`
 - If we were to failover again, we'd have the same problem with the backend from the remote site (it'd be stuck in `deleting` as well)
 
 Because of that, it seems easier to me to reinstall Trident on failback. It takes 20-30 seconds to uninstall and install Trident, and the process of importing volumes and recreating applications takes another 10-20 seconds. 
 
 ![Scripted SolidFire storage cluster failback with Trident CSI 21.01](images/animated-solidfire-site-failback.gif)
 
-Some observations:
+The next failover to secondary storage should not require re-installation of Trident for the secondary SolidFire *if* failback to the primary storage was planned. That is, when we fail back, we can remove PVCs and the remote back-end before we fail back, so that the secondary back-end does not end up stuck.
+
+Additional observations:
 
 - Trident CSI's volume import feature can't import volume snapshots. The same happens if we reinstall Trident, add a backend and import volumes
 - Due to Trident reinstallation we end up with new volume names every time we failover or failback. In volume details it is possible to see the static volume name from the backend, which is inconvenient for users who rely solely on Kubernetes PVC names (`kubectl describe pvc` can be used to obtain both the Kubernetes (`trident.netapp.io/importBackendUUID`) and SolidFire (`trident.netapp.io/importOriginalName`) volume name).
