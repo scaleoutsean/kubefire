@@ -7,8 +7,9 @@
   - [Single Kubernetes cluster attached to two SolidFire storage clusters (not recommended)](#single-kubernetes-cluster-attached-to-two-solidfire-storage-clusters-not-recommended)
 - [Tools and how to use them](#tools-and-how-to-use-them)
   - [Single source of truth: Kubernetes, Trident CSI or SolidFire](#single-source-of-truth-kubernetes-trident-csi-or-solidfire)
-- [Process of failover and failback with Kubernetes-SolidFire pairs](#process-of-failover-and-failback-with-kubernetes-solidfire-pairs)
-- [Process of failover and failback with single Kubernetes cluster](#process-of-failover-and-failback-with-single-kubernetes-cluster)
+- [Workflow for failover and failback](#workflow-for-failover-and-failback)
+  - [Failover and failback with Kubernetes-SolidFire pairs](#failover-and-failback-with-kubernetes-solidfire-pairs)
+  - [Failover and failback with single Kubernetes cluster](#failover-and-failback-with-single-kubernetes-cluster)
 - [Backup and restore integrations](#backup-and-restore-integrations)
 
 
@@ -34,6 +35,8 @@ This approach works better as each site has one fixed Trident CSI back-end.
 - (3) If new workloads are added, add them to reversed replication pairs to be ready for fail-back
 
 ![Two Kubernetes-SolidFire pairs with PROD active](images/05-Dual-K8s-Dual-SolidFire-DR-active-PROD-passive.svg)
+
+This approach is "symmetric" in the sense that failover and failback have the same workflow.
 
 ### Single Kubernetes cluster attached to two SolidFire storage clusters (not recommended)
 
@@ -80,11 +83,15 @@ Lists produced by the Trident API or `tridentctl` seem more reliable and any err
 
 It is possible to get volume lists from both kubectl and tridentctl, work with the latter and warn on any discrepancies, but I haven't seen a situation in which that may be necessary.
 
-## Process of failover and failback with Kubernetes-SolidFire pairs
+## Workflow for failover and failback
+
+### Failover and failback with Kubernetes-SolidFire pairs
 
 TODO.
 
-## Process of failover and failback with single Kubernetes cluster
+### Failover and failback with single Kubernetes cluster
+
+This approach is discouraged because of its complexity.
 
 To failover, we simply reverse the direction of replication, add the remote SoOlidFire as new Trident back-end and use Trident CSI to import PVCs from the secondary SolidFire. This entire procedure takes seconds if you have the inputs prepared.
 
