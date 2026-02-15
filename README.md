@@ -1,4 +1,4 @@
-## kubefire -  NetApp HCI or SolidFire storage cluster failover and failback for Trident CSI consumers
+## kubefire -  NetApp HCI and SolidFire storage cluster failover and failback for SolidFire and Trident CSI users
 
 - [kubefire -  NetApp HCI or SolidFire storage cluster failover and failback for Trident CSI consumers](#kubefire----netapp-hci-or-solidfire-storage-cluster-failover-and-failback-for-trident-csi-consumers)
 - [Introduction](#introduction)
@@ -32,11 +32,11 @@ SolidFire CSI is an alternative CSI driver for SolidFire that, among other thing
 
 You won't need any special "tool" or script to failover or failback, so you should simply check the documentation once it's released.
 
-Long story short, each SolidFire CSI driver's `volumeHandle` refers to a SolidFire Volume ID. The rest is simply about creating volume pairs and deciding on the direction of replication. You can do that with Trident CSI today using the same tool that I plan to employ for SolidFire CSI, [Terraform Provider for SolidFire](https://github.com/scaleoutsean/terraform-provider-solidfire), but you'll have to deal with Trident CSI separately.
+Long story short, each SolidFire CSI driver's `volumeHandle` refers to a SolidFire Volume ID. The rest is simply about creating volume pairs and deciding on the direction of replication. You can do that with Trident CSI today using the same tool that I plan to employ for SolidFire CSI, [Terraform Provider for SolidFire](https://github.com/scaleoutsean/terraform-provider-solidfire), but you'll have to deal with Trident CSI separately. SolidFire CSI gets out of your way: there are no "backends" or similar constructs.
 
-SolidFire CSI gets out of your way: there are no "backends" or similar constructs.
+There's no "volume import" either, so once you're done flipping, just create static PVCs which, considering that you have all the volume IDs and hance names, too, is straightforward.
 
-## Trident CSI Scenarios
+## Trident CSI scenarios
 
 Approaches with Trident CSI are, as far as I am concerned, "legacy" approaches that I would not recommend to SolidFire users who have a choice of trying something else. 
 
