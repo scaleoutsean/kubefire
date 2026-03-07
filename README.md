@@ -1,9 +1,17 @@
 ## kubefire -  NetApp HCI and SolidFire storage cluster failover and failback for SolidFire and Trident CSI users
 
-- [kubefire -  NetApp HCI or SolidFire storage cluster failover and failback for Trident CSI consumers](#kubefire----netapp-hci-or-solidfire-storage-cluster-failover-and-failback-for-trident-csi-consumers)
+- [kubefire -  NetApp HCI and SolidFire storage cluster failover and failback for SolidFire and Trident CSI users](#kubefire----netapp-hci-and-solidfire-storage-cluster-failover-and-failback-for-solidfire-and-trident-csi-users)
 - [Introduction](#introduction)
 - [SolidFire CSI scenarios](#solidfire-csi-scenarios)
-- [Trident CSI Scenarios](#trident-csi-scenarios)
+  - [Externally managed SolidFire failover with Terraform or scripts](#externally-managed-solidfire-failover-with-terraform-or-scripts)
+  - [Kubernetes-integrated SolidFire failover](#kubernetes-integrated-solidfire-failover)
+  - [Volume resizing](#volume-resizing)
+  - [Static PV pattern: cattle vs pet volumes](#static-pv-pattern-cattle-vs-pet-volumes)
+  - [Dynamic PV pattern: Kubernetes-managed replication](#dynamic-pv-pattern-kubernetes-managed-replication)
+  - [Rehearsals and testing](#rehearsals-and-testing)
+  - [Other noteworthy differences vs Trident CSI](#other-noteworthy-differences-vs-trident-csi)
+  - [Site failover with dedicated vs. shared SolidFire clusters](#site-failover-with-dedicated-vs-shared-solidfire-clusters)
+- [Trident CSI scenarios](#trident-csi-scenarios)
   - [Two Kubernetes-SolidFire pairs (recommended)](#two-kubernetes-solidfire-pairs-recommended)
   - [Single Kubernetes cluster attached to two SolidFire storage clusters (not recommended)](#single-kubernetes-cluster-attached-to-two-solidfire-storage-clusters-not-recommended)
   - [Tools and how to use them](#tools-and-how-to-use-them)
@@ -36,7 +44,7 @@ Long story short, each SolidFire CSI driver's `volumeHandle` refers to a SolidFi
 
 ### Externally managed SolidFire failover with Terraform or scripts
 
-You can do that with Trident CSI today using the same tool that I plan to employ for SolidFire CSI, [Terraform Provider for SolidFire](https://github.com/scaleoutsean/terraform-provider-solidfire), but you'll have to deal with Trident CSI separately. 
+You can do that with Trident CSI today using the same tool that I plan to employ for SolidFire CSI, [Terraform Provider for SolidFire](https://github.com/scaleoutsean/terraform-provider-solidfire), but you'll have to deal with Trident CSI separately.
 
 SolidFire CSI gets out of your way: there are no "backends" or similar constructs that you need to manage or recover.
 
@@ -48,7 +56,7 @@ There's no "volume import" feature either, because SolidFire CSI is stateless. S
 
 This hasn't been done yet, as SolidFire CSI is yet to be posted to Github. It should be doable by anyone, but I'm not going to spend time on this unless someone needs it. 
 
-My preferred approaches (not in order of preference) are Argo CD (or similar) on eachsite, and a "witness site" approach with management plane where failover decisions are made by tenants using a CLI or Web UI located on "witness site". I haven't started working on this as I don't know of anyone who needs this.
+My preferred approaches (not in order of preference) are Argo CD (or similar) on each site, and a "witness site" approach with management plane where failover decisions are made by tenants using a CLI or Web UI located on "witness site". I haven't started working on this as I don't know of anyone who needs this.
 
 ### Volume resizing
 
@@ -63,7 +71,7 @@ While some prefer to manage everything in Kubernetes, many users still prefer to
 
 - Pet volumes: pre-create source *and destination* volumes with [Ansible Collection for SolidFire](https://github.com/scaleoutsean/netapp.solidfire) or [Terraform Provider for SolidFire](https://github.com/scaleoutsean/terraform-provider-solidfire) or own script. Then import static volumes to SolidFire CSI on each site. Now failover and failback is simply a matter of flipping the direction of replication (volume pairing relationship). Note that you can resize volumes in SolidFire CSI, which then makes the reality out of sync with Terraform's state, so pick one way to do it, make sure it works the way you expect, and stick with it
 - Cattle volumes: don't replicate these. These are semi-ephemeral - you don't need a copy and their replication consumes bandwidth
-- Remember to set "pet" PVCs to "Retain". SolidFire CSI also provides the option to not Purge volumes on PVC Delete when retention policy is Delete (Trident CSI always purges deleted volumes with `solidfire-san`) if you want to use the retention policy "Delete" but be able to rescue fat-fingered volumes before they expire from SolidFire's Recycle Bin. Deleted but not-yet-purged voulmes can be restored and brought back to Kubernetes with SolidFire CSI as static PVCs
+- Remember to set "pet" PVCs to "Retain". SolidFire CSI also provides the option to not Purge volumes on PVC Delete when retention policy is Delete (Trident CSI always purges deleted volumes with `solidfire-san`) if you want to use the retention policy "Delete" but be able to rescue fat-fingered volumes before they expire from SolidFire's Recycle Bin. Deleted but not-yet-purged volumes can be restored and brought back to Kubernetes with SolidFire CSI as static PVCs
 
 ### Dynamic PV pattern: Kubernetes-managed replication
 
@@ -84,7 +92,7 @@ With SolidFire CSI you won't need to deal with stuck backends or other weirdness
 
 - on replication target site, simply create a test namespace, clone volumes, create static PVs from clones, test your application and delete them after you're done testing
 - CSI volumes can be cloned directly from replication targets (in `replicationTarget` mode) but also from SolidFire snapshots
-  - if you create snapshots and enable them for replication at the source, you'll be able to use them (perhaps you create these so that they're [application-aware](https://scaleoutsean.github.io/2024/03/23/velero-netapp-verda-scripts-and-trident.html)). If not, you can create snapshots on demand or simply clone current state of a replication target (obviously, this will be a "cash-consistent" clone). 
+  - if you create snapshots and enable them for replication at the source, you'll be able to use them (perhaps you create these so that they're [application-aware](https://scaleoutsean.github.io/2024/03/23/velero-netapp-verda-scripts-and-trident.html)). If not, you can create snapshots on demand or simply clone current state of a replication target (obviously, this will be a "cash-consistent" clone).
   - you can create clones from volumes at the target site. While this is *ad hoc*, it will work just the same
 - use a "purge"-enabled Storage Class on SolidFire CSI if testing at scale, to not max out your tenant's quota or hit some other limit (metadata capacity, block capacity, etc.)
 - SolidFire CSI on the remote site simply needs to create static PVs for these clones
