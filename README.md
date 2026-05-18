@@ -5,12 +5,14 @@
 - [SolidFire CSI scenarios](#solidfire-csi-scenarios)
   - [Externally managed SolidFire failover with Terraform or scripts](#externally-managed-solidfire-failover-with-terraform-or-scripts)
   - [Kubernetes-integrated SolidFire failover](#kubernetes-integrated-solidfire-failover)
-  - [Volume resizing](#volume-resizing)
-  - [Static PV pattern: cattle vs pet volumes](#static-pv-pattern-cattle-vs-pet-volumes)
-  - [Dynamic PV pattern: Kubernetes-managed replication](#dynamic-pv-pattern-kubernetes-managed-replication)
-  - [Rehearsals and testing](#rehearsals-and-testing)
-  - [Other noteworthy differences vs Trident CSI](#other-noteworthy-differences-vs-trident-csi)
-  - [Site failover with dedicated vs. shared SolidFire clusters](#site-failover-with-dedicated-vs-shared-solidfire-clusters)
+  - [Notes, tips and best practices](#notes-tips-and-best-practices)
+    - [Volume attributes](#volume-attributes)
+    - [Volume resizing for paired volumes](#volume-resizing-for-paired-volumes)
+    - [Static PV pattern: cattle vs pet volumes](#static-pv-pattern-cattle-vs-pet-volumes)
+    - [Dynamic PV pattern: Kubernetes-managed replication](#dynamic-pv-pattern-kubernetes-managed-replication)
+    - [Rehearsals and testing](#rehearsals-and-testing)
+    - [Other noteworthy differences vs Trident CSI](#other-noteworthy-differences-vs-trident-csi)
+    - [Site failover with dedicated vs. shared SolidFire clusters](#site-failover-with-dedicated-vs-shared-solidfire-clusters)
 - [Trident CSI scenarios](#trident-csi-scenarios)
   - [Two Kubernetes-SolidFire pairs (recommended)](#two-kubernetes-solidfire-pairs-recommended)
   - [Single Kubernetes cluster attached to two SolidFire storage clusters (not recommended)](#single-kubernetes-cluster-attached-to-two-solidfire-storage-clusters-not-recommended)
@@ -32,40 +34,81 @@
 
 Trident CSI unfortunately hasn't added site or storage cluster failover and failback features, or addressed some of the initial shortcomings, in its `solidfire-san` driver for close to a decade, so storage failover and failback aren't as convenient as they could be.
 
-After years of waiting, I've decided to create own CSI driver, SolidFire CSI. It's not "better", it's just "different" and works the way I want. It's also not officially supported or certified for any Kubernetes distribution. But it may work better in some situations.
+So I've created my own driver, [SolidFire CSI](https://github.com/scaleoutsean/solidfire-csi). It's not "better", it's just different and works the way I want. It's also not officially supported or certified for any Kubernetes distribution. But it may work better in some situations. 
+
+One of the situations it handles better (in my opinion) is storage failover and failback, and SolidFire is **the only** CSI I recommend for that. If you use Trident CSI, you may be better off with [VolSync](https://scaleoutsean.github.io/2023/02/13/volume-replication-solidfire-kubernetes-volsync.html). 
+
+Let's review the recommended approach, with SolidFire CSI.
 
 ## SolidFire CSI scenarios
 
-[SolidFire CSI](https://scaleoutsean.github.io/2026/03/06/solidfire-csi-driver.html) is a community CSI driver for SolidFire that, among other things, makes it easier to handle storage cluster failover and failback. That was one of the main reasons I created it.
+[SolidFire CSI](https://scaleoutsean.github.io/2026/03/06/solidfire-csi-driver.html) is a community CSI driver for SolidFire that, among other things, makes it easier to handle storage cluster failover and failback. That was one of the main reasons I created it. [Get it here](https://github.com/scaleoutsean/solidfire-csi).
 
-You won't need any special "tool" or script to failover or failback, so you should simply check the documentation.
+You won't need any special "tool" or script to failover or failback Kubernetes with SolidFire CSI. Simply check the documentation and deploy.
 
-Long story short, each SolidFire CSI driver's `volumeHandle` refers to a SolidFire Volume ID. The rest is simply about creating volume pairs and deciding on the direction of replication.
+Long story short, each SolidFire CSI driver's `volumeHandle` refers to a SolidFire Volume ID. The rest is simply about creating (replication) volume pairs and deciding on the direction of replication. Flip that `volumeHandle` to the ID of the paired volume. That's it.
+
+```yaml
+spec:
+  accessModes:
+  - ReadWriteOnce
+  capacity:
+    storage: 1Gi
+  claimRef:
+    apiVersion: v1
+    kind: PersistentVolumeClaim
+    name: test-pvc
+    namespace: default
+    resourceVersion: "110007"
+    uid: d173a454-5071-4166-be84-3fec60e95938
+  csi:
+    controllerExpandSecretRef:
+      name: solidfire-secret
+      namespace: default
+    controllerPublishSecretRef:
+      name: solidfire-secret
+      namespace: default
+    driver: csi.solidfire.com
+    fsType: ext4
+    nodeStageSecretRef:
+      name: solidfire-secret
+      namespace: default
+    volumeAttributes:
+      storage.kubernetes.io/csiProvisionerIdentity: 1769874269794-1851-csi.solidfire.com
+    volumeHandle: "122"     # <======= HERE 
+  persistentVolumeReclaimPolicy: Delete
+  storageClassName: solidfire-bronze
+```
 
 ### Externally managed SolidFire failover with Terraform or scripts
 
-You can do that with Trident CSI today using the same tool that I plan to employ for SolidFire CSI, [Terraform Provider for SolidFire](https://github.com/scaleoutsean/terraform-provider-solidfire), but you'll have to deal with Trident CSI separately.
+You can also do that with Trident CSI using the same tool that can be used with SolidFire CSI, [Terraform Provider for SolidFire](https://github.com/scaleoutsean/terraform-provider-solidfire), but you'll have to deal with Trident CSI (fail-back) separately. 
 
-SolidFire CSI gets out of your way: there are no "backends" or similar constructs that you need to manage or recover.
+SolidFire CSI gets out of your way: there are no "backends" or similar constructs that you need to manage or recover. There's no "volume import" feature either, because SolidFire CSI is stateless. So once you're done flipping the direction of replication, just create static PVCs which, considering that you have all the volume IDs and hence their names and Kubernetes information, too, is straightforward.
 
-There's no "volume import" feature either, because SolidFire CSI is stateless. So once you're done flipping the direction of replication, just create static PVCs which, considering that you have all the volume IDs and hence their names and Kubernetes information, too, is straightforward.
-
-**NOTE:** as usual, destination volumes are always in `replicationTarget` mode, which means Kubernetes on the target site should have deployments scaled down to 0, or not created until failover happens and the volumes are flipped to `readWrite` mode.
+**NOTE:** as usual, replication target volumes are always in `replicationTarget` mode, which means Kubernetes on target site should first have deployments scaled down to 0, or not created until failover to target site happens and the volumes have been flipped to `readWrite` mode.
 
 ### Kubernetes-integrated SolidFire failover
 
-This hasn't been done yet, as SolidFire CSI is yet to be posted to Github. It should be doable by anyone, but I'm not going to spend time on this unless someone needs it. 
-
 My preferred approaches (not in order of preference) are Argo CD (or similar) on each site, and a "witness site" approach with management plane where failover decisions are made by tenants using a CLI or Web UI located on "witness site". I haven't started working on this as I don't know of anyone who needs this.
 
-### Volume resizing
+### Notes, tips and best practices
+
+#### Volume attributes
+
+- SolidFire CSI controller [exports Prometheus metrics](https://scaleoutsean.github.io/2026/05/17/couple-o-releases.html#solidfire-csi-v100) and also injects metadata into SolidFire volume attributes (Trident CSI does that part, too)
+- SolidFire Collector collects volume attributes
+
+If you collect these you get complete Kubernetes-to-SolidFire mapping and monitoring that you can additionally augment with Kubernetes cluster metrics, not just for performance but also configuration monitoring and logging.
+
+#### Volume resizing for paired volumes
 
 - This should be managed separately and not figured out "as you go" in the middle of a site failover. Although SolidFire CSI and Ansible, and Terraform make this easy, the risk isn't that it can't be done in course of troubleshooting a fail-over or fail-back, but that enlarged target volumes won't be replicated to destination that hasn't been resized to the same (or larger, although that's silly) capacity. That's why it's recommended to have this in order and managed separately from failover-failback
 - You may use own scripts, obviously, or Ansible (to get facts) or [Longhorny](https://github.com/scaleoutsean/longhorny)
 - Longhorny provides an easy site-to-site comparison report, but it can also be used to resize volumes although this doesn't mean you should use Longhorny to resize (depending on where you want to manage volumes (see below), resizing in Longhorny may be the wrong way to do it). The main thing that is valid for Kubernetes and SolidFire CSI environments is that *report*. You can also reuse that source code to build own tools
 - For the geeks out there, you could use SolidFire Collector to figure out pairings and find size discrepancies among paired volumes using InfluxDB SQL queries, either directly or from Grafana dashboards where you could also create alerts for these situations
 
-### Static PV pattern: cattle vs pet volumes
+#### Static PV pattern: cattle vs pet volumes
 
 While some prefer to manage everything in Kubernetes, many users still prefer to manage volumes as "pets".
 
@@ -73,7 +116,7 @@ While some prefer to manage everything in Kubernetes, many users still prefer to
 - Cattle volumes: don't replicate these. These are semi-ephemeral - you don't need a copy and their replication consumes bandwidth
 - Remember to set "pet" PVCs to "Retain". SolidFire CSI also provides the option to not Purge volumes on PVC Delete when retention policy is Delete (Trident CSI always purges deleted volumes with `solidfire-san`) if you want to use the retention policy "Delete" but be able to rescue fat-fingered volumes before they expire from SolidFire's Recycle Bin. Deleted but not-yet-purged volumes can be restored and brought back to Kubernetes with SolidFire CSI as static PVCs
 
-### Dynamic PV pattern: Kubernetes-managed replication
+#### Dynamic PV pattern: Kubernetes-managed replication
 
 If you want to use Kubernetes-based workflow (GitOps, ArgoCD, etc.) as your control plane, that's possible and easy with Trident CSI.
 
@@ -86,7 +129,7 @@ To flip back:
 - the last step is to check for any size differences in replicated volume pairs, which may appear due to resizing while operating at the remote site. You should have a separate procedure that updates both sides of a replication relationship and not have to "discover" this now. If any volume has been expanded while active on fail-over site, expand its source peer on the site that you plan to fail back to and let it sync
 - with the original source site volumes in `replicationTarget` mode, once all replication pairs are in sync, scale the active (remote) site to 0, flip replication relationships to promote the original site to active and seconds later you may fail back your workloads by scaling up deployments on your primary site
 
-### Rehearsals and testing
+#### Rehearsals and testing
 
 With SolidFire CSI you won't need to deal with stuck backends or other weirdness. If your volumes are replicating to a remote site it's trivial to perform site or storage cluster failover rehearsals:
 
@@ -97,11 +140,11 @@ With SolidFire CSI you won't need to deal with stuck backends or other weirdness
 - use a "purge"-enabled Storage Class on SolidFire CSI if testing at scale, to not max out your tenant's quota or hit some other limit (metadata capacity, block capacity, etc.)
 - SolidFire CSI on the remote site simply needs to create static PVs for these clones
 
-### Other noteworthy differences vs Trident CSI
+#### Other noteworthy differences vs Trident CSI
 
 - It is recommended to create a mapping for QoS policies if you use those. You can have those hard-coded in SolidFire Storage Classes, so that you don't have to do anything special: if "Silver" is QoS Policy ID `1` at your production site and `2` on your DR site cluster, simply prepare storage classes that are named the same, but use different QoS Policy IDs. If you don't do that, you can use "default" SolidFire QoS values for volumes and not manage QoS. Or you can ignore QoS management and retype volumes after failover if you discover you need to use that site longer than expected - SolidFire CSI can do that too
 
-### Site failover with dedicated vs. shared SolidFire clusters
+#### Site failover with dedicated vs. shared SolidFire clusters
 
 If your SolidFire cluster is shared by several Kubernetes clusters, you should consider if your failover scenarios should include just some of the tenants (two or more Kubernetes clusters) or all tenants (all Kubernetes clusters, or single Kubernetes cluster).
 - Different Kubernetes clusters should use SolidFire each with own SolidFire account (tenant) identity.
