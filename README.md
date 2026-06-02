@@ -18,7 +18,9 @@
 
 ## Introduction
 
-Older versions of this README have information about Trident CSI, but after SolidFire CSI came out I realized there's no reason to cover Trident CSI - it doesn't support, and I don't think it will, `solidfire-san`, so why bother reading how it "could" be done?
+Older versions of this README have information about Trident CSI, but after SolidFire CSI came out I realized there's no reason to cover Trident CSI - it doesn't support, and I don't think it will, failback with `solidfire-san`, so why bother reading how it "could" be done?
+
+This guide is now only for SolidFire CSI.
 
 ## SolidFire CSI scenarios
 
