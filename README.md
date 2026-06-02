@@ -10,9 +10,10 @@
     - [Static PV pattern: cattle vs pet volumes](#static-pv-pattern-cattle-vs-pet-volumes)
     - [Dynamic PV pattern: Kubernetes-managed replication](#dynamic-pv-pattern-kubernetes-managed-replication)
     - [Rehearsals and testing](#rehearsals-and-testing)
-    - [Other noteworthy differences vs Trident CSI](#other-noteworthy-differences-vs-trident-csi)
+    - [Noteworthy differences vs Trident CSI](#noteworthy-differences-vs-trident-csi)
     - [Kubernetes Volume Snapshot and Volume Group Snapshot replication](#kubernetes-volume-snapshot-and-volume-group-snapshot-replication)
     - [Site failover with dedicated vs. shared SolidFire clusters](#site-failover-with-dedicated-vs-shared-solidfire-clusters)
+    - [Integration with backup tools (Velero, Kasten)](#integration-with-backup-tools-velero-kasten)
 - [Tools](#tools)
 
 
@@ -123,7 +124,7 @@ With SolidFire CSI you won't need to deal with stuck backends or other weirdness
 - use a "purge"-enabled Storage Class on SolidFire CSI if testing at scale, to not max out your tenant's quota or hit some other limit (metadata capacity, block capacity, etc.)
 - SolidFire CSI on the remote site simply needs to create static PVs for these clones
 
-#### Other noteworthy differences vs Trident CSI
+#### Noteworthy differences vs Trident CSI
 
 - It is recommended to create a mapping for QoS policies if you use those. You can have those hard-coded in SolidFire Storage Classes, so that you don't have to do anything special: if "Silver" is QoS Policy ID `1` at your production site and `2` on your DR site cluster, simply prepare storage classes that are named the same, but use different QoS Policy IDs. If you don't do that, you can use "default" SolidFire QoS values for volumes and not manage QoS. Or you can ignore QoS management and retype volumes after failover if you discover you need to use that site longer than expected - SolidFire CSI can do that too
 
@@ -137,9 +138,14 @@ If your SolidFire cluster is shared by several Kubernetes clusters, you should c
 - Different Kubernetes clusters should use SolidFire each with own SolidFire account (tenant) identity.
 - For granular failover (of individual SolidFire tenants), you need to flip just volume pairs owned by those tenants. Longhorny is suggested for monitoring because while it can flip the direction of replication, it does it for *all paired volumes* (and hence all tenants). It would need to enhanced to filter by tenant account ID to be able to used for simple tenant(s)-based site failover. Of course, that can be implemented, but it hasn't been done yet
 
+#### Integration with backup tools (Velero, Kasten)
+
+- SolidFire replication is more efficient and likely a better tool for replication.
+- Backup tools may recommend a workflow with "continuous restore", where frequent snapshots are backed up to S3 with Data Mover and then restored to a DR cluster. That is fine, but requires considerably more CPU, RAM and network resources. The main advantage is it's a fully Kubernetes-native process that doesn't require storage administrator's involvement.
+
 ## Tools 
 
-- `./export_solidfire_state.py` exports SolidFire CSI state from a cluster identified by kubeconfig file and SolidFire credentials
+- `export_solidfire_state.py` exports SolidFire CSI state from a cluster identified by kubeconfig file and SolidFire credentials
 
 ```sh
 ./.venv/bin/python export_solidfire_state.py \
@@ -148,3 +154,15 @@ If your SolidFire cluster is shared by several Kubernetes clusters, you should c
     --username admin \
     --password ----
 ```
+
+- `generate_kustomize_overlay.py` generates a folder (`dr-overlay`) containing:
+  - `pv-<namespace>-<pvc>.yaml`: A static PV containing the SolidFire CSI driver logic and the target volumeHandle (which it intelligently grabs from the dr_replication dictionary you added in the previous step!).
+  - `patch-pvc-<namespace>-<pvc>.yaml`: A small Kustomize patch that targets the PVC from your `--base` and injects `volumeName: <the-new-static-pv>`.
+  - `kustomization.yaml`: The master file linking the base, your new PVs, and the PVC patches.
+
+If a cluster dies, the process is:
+
+- Flip SolidFire volumes to ReadWrite (use Longhorny or own script (you can re-use Longhorny code))
+- Run script -> review JSON -> run Kustomize script
+- Commit the DR Kustomize directory to Git (if using ArgoCD) OR run kubectl apply -k ./dr-overlay/ directly!
+

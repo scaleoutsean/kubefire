@@ -1,4 +1,6 @@
-#!/home/sean/code/kubefire/.venv/bin/python
+#!/usr/bin/env python3
+
+# pip install kubernetes 
 
 from kubernetes import client, config
 import json
