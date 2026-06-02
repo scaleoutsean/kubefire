@@ -160,9 +160,15 @@ If your SolidFire cluster is shared by several Kubernetes clusters, you should c
   - `patch-pvc-<namespace>-<pvc>.yaml`: A small Kustomize patch that targets the PVC from your `--base` and injects `volumeName: <the-new-static-pv>`.
   - `kustomization.yaml`: The master file linking the base, your new PVs, and the PVC patches.
 
-If a cluster dies, the process is:
+The process is:
 
-- Flip SolidFire volumes to ReadWrite (use Longhorny or own script (you can re-use Longhorny code))
-- Run script -> review JSON -> run Kustomize script
-- Commit the DR Kustomize directory to Git (if using ArgoCD) OR run kubectl apply -k ./dr-overlay/ directly!
-
+- Before site fails
+  - Run the state export script and `scp` or `S3 PUT` resulting JSON to a 3rd site or destination site. This can run automatically (every 30 minutes, for example), depending on how your storage pairing is done
+- After site fails
+  - Flip SolidFire site's volumes to `readWrite` mode (use Longhorny or own script (you can re-use Longhorny code))
+  - Run Kustomize script on JSON state file
+  - Commit the DR Kustomize directory to Git (if using ArgoCD) OR run `kubectl apply -k ./dr-overlay/` directly
+- Before (planned) failback
+  - Ensure the other site's volumes are in `replicationTarget` mode and replication is up-to-date
+  - (Optional, if Kubernetes has changed) Export state, use Kustimize to prepare overlay for failback 
+  - Shut down Kubernetes on active site and promote the original site to `readWrite` and set the formerly active site to `replicationTarget`
