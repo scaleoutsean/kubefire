@@ -171,4 +171,4 @@ The process is:
 - Before (planned) failback
   - Ensure the other site's volumes are in `replicationTarget` mode and replication is up-to-date
   - (Optional, if Kubernetes has changed) Export state, use Kustimize to prepare overlay for failback 
-  - Shut down Kubernetes on active site and promote the original site to `readWrite` and set the formerly active site to `replicationTarget`
+  - Shut down Kubernetes on active site, wait for replication to complete and drain any pending changes. Set the formerly active site to `replicationTarget`, and promote the site you're failing back to to `readWrite`
