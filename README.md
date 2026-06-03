@@ -14,7 +14,10 @@
     - [Kubernetes Volume Snapshot and Volume Group Snapshot replication](#kubernetes-volume-snapshot-and-volume-group-snapshot-replication)
     - [Site failover with dedicated vs. shared SolidFire clusters](#site-failover-with-dedicated-vs-shared-solidfire-clusters)
     - [Integration with backup tools (Velero, Kasten)](#integration-with-backup-tools-velero-kasten)
+    - [SolidFire does not replicate volume attributes](#solidfire-does-not-replicate-volume-attributes)
 - [Tools](#tools)
+  - [`export_solidfire_state.py`](#export_solidfire_statepy)
+  - [`generate_kustomize_overlay.py`](#generate_kustomize_overlaypy)
 
 
 ## Introduction
@@ -144,19 +147,30 @@ If your SolidFire cluster is shared by several Kubernetes clusters, you should c
 - SolidFire replication is more efficient and likely a better tool for replication.
 - Backup tools may recommend a workflow with "continuous restore", where frequent snapshots are backed up to S3 with Data Mover and then restored to a DR cluster. That is fine, but requires considerably more CPU, RAM and network resources. The main advantage is it's a fully Kubernetes-native process that doesn't require storage administrator's involvement.
 
-## Tools 
+#### SolidFire does not replicate volume attributes
 
-- `export_solidfire_state.py` exports SolidFire CSI state from a cluster identified by kubeconfig file and SolidFire credentials
+- SolidFire CSI injects Kubernetes metadata into PVs, but this information does not get replicated with volume contents. You can optionally extract this information and inject it to replica volumes once they're promoted to `readWrite`, if you rely on that information for monitoring or other purposes.
+
+## Tools
+
+### `export_solidfire_state.py`
+
+This script exports SolidFire CSI state from a cluster identified by kubeconfig file and SolidFire credentials
 
 ```sh
 ./.venv/bin/python export_solidfire_state.py \
     --kubeconfig ~/.kube/config \
     --mvip 192.168.1.34 \
     --username admin \
-    --password ----
+    --password ---- \
+    [--include volattrs]
 ```
 
-- `generate_kustomize_overlay.py` generates a folder (`dr-overlay`) containing:
+If you include volume attributes, that will also export SolidFire CSI-applied volume attributes. These should not be automatically imported because the remote site will inevitably have some values different, but having the ability to reference volume metadata is desirable, even if you don't selectively apply these values to replica volumes once they're promoted to `readWrite`.
+
+### `generate_kustomize_overlay.py`
+
+Generates a folder (`dr-overlay`) containing:
   - `pv-<namespace>-<pvc>.yaml`: A static PV containing the SolidFire CSI driver logic and the target volumeHandle (which it intelligently grabs from the dr_replication dictionary you added in the previous step!).
   - `patch-pvc-<namespace>-<pvc>.yaml`: A small Kustomize patch that targets the PVC from your `--base` and injects `volumeName: <the-new-static-pv>`.
   - `kustomization.yaml`: The master file linking the base, your new PVs, and the PVC patches.
@@ -164,11 +178,12 @@ If your SolidFire cluster is shared by several Kubernetes clusters, you should c
 The process is:
 
 - Before site fails
-  - Run the state export script and `scp` or `S3 PUT` resulting JSON to a 3rd site or destination site. This can run automatically (every 30 minutes, for example), depending on how your storage pairing is done
-- After site fails
+  - Run the state export script and `scp` or `S3 PUT` resulting JSON to a 3rd site or destination site. This can run automatically (every 30 minutes, for example), depending on how your storage pairing schedule/frequency - it's better to do storage pairing and replication on same schedule
+- After site fails (failover to DR site)
   - Flip SolidFire site's volumes to `readWrite` mode (use Longhorny or own script (you can re-use Longhorny code))
   - Run Kustomize script on JSON state file
   - Commit the DR Kustomize directory to Git (if using ArgoCD) OR run `kubectl apply -k ./dr-overlay/` directly
+  - Optionally inject some voume metadata attributes to volumes on DR site using `ModifyVolume` API call 
 - Before (planned) failback
   - Ensure the other site's volumes are in `replicationTarget` mode and replication is up-to-date
   - (Optional, if Kubernetes has changed) Export state, use Kustimize to prepare overlay for failback 

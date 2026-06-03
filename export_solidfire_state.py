@@ -37,7 +37,29 @@ def get_solidfire_paired_volumes(mvip, username, password):
         print(f"Failed to fetch paired volumes from SolidFire: {e}")
         return {}
 
-def export_solidfire_data(kubeconfig_path, prod_mvip, sf_user, sf_pass):
+def get_solidfire_volume_attributes(mvip, username, password):
+    url = f"https://{mvip}/json-rpc/12.5"
+    payload = {
+        "method": "ListVolumes",
+        "params": {},
+        "id": 1
+    }
+    try:
+        response = requests.post(url, json=payload, auth=(username, password), verify=False)
+        response.raise_for_status()
+        data = response.json()
+        
+        vol_attrs = {}
+        if 'result' in data and 'volumes' in data['result']:
+            for volume in data['result']['volumes']:
+                # The volume handle will be a string representation of volumeID in CSI
+                vol_attrs[str(volume['volumeID'])] = volume.get('attributes', {})
+        return vol_attrs
+    except Exception as e:
+        print(f"Failed to fetch volume attributes from SolidFire: {e}")
+        return {}
+
+def export_solidfire_data(kubeconfig_path, prod_mvip, sf_user, sf_pass, includes):
     # Load kube config from default location or specific path
     if kubeconfig_path:
         config.load_kube_config(config_file=kubeconfig_path)
@@ -68,11 +90,15 @@ def export_solidfire_data(kubeconfig_path, prod_mvip, sf_user, sf_pass):
     # Get available paired volumes from SolidFire
     sf_paired_volumes = get_solidfire_paired_volumes(prod_mvip, sf_user, sf_pass)
     
+    sf_attributes = {}
+    if includes and 'volattrs' in includes:
+        sf_attributes = get_solidfire_volume_attributes(prod_mvip, sf_user, sf_pass)
+    
     for pv in pvs.items:
         if pv.spec.csi and pv.spec.csi.driver == PROVISIONER_NAME:
             dr_mapping = sf_paired_volumes.get(pv.metadata.name, None)
             
-            solidfire_pvs[pv.metadata.name] = {
+            pv_data = {
                 "name": pv.metadata.name,
                 # volumeHandle contains the SolidFire volume ID
                 "volume_handle": pv.spec.csi.volume_handle, 
@@ -85,6 +111,11 @@ def export_solidfire_data(kubeconfig_path, prod_mvip, sf_user, sf_pass):
                 },
                 "dr_replication": dr_mapping
             }
+            
+            if sf_attributes and pv.spec.csi.volume_handle in sf_attributes:
+                pv_data["volume_attributes"] = sf_attributes[pv.spec.csi.volume_handle]
+
+            solidfire_pvs[pv.metadata.name] = pv_data
 
     # 3. Query all PVCs globally and filter ones bound to SolidFire PVs
     pvcs = v1.list_persistent_volume_claim_for_all_namespaces()
@@ -119,6 +150,7 @@ if __name__ == "__main__":
     parser.add_argument("--mvip", help="SolidFire Management VIP (MVIP) address", default="192.168.1.34")
     parser.add_argument("--username", help="SolidFire admin username", default="admin")
     parser.add_argument("--password", help="SolidFire admin password", default="----")
+    parser.add_argument("--include", nargs="+", help="Optional fields to include (e.g., 'volattrs')", default=[])
     
     args = parser.parse_args()
 
@@ -126,5 +158,6 @@ if __name__ == "__main__":
         kubeconfig_path=args.kubeconfig,
         prod_mvip=args.mvip,
         sf_user=args.username,
-        sf_pass=args.password
+        sf_pass=args.password,
+        includes=args.include
     )
