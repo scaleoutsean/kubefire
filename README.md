@@ -126,7 +126,7 @@ With SolidFire CSI you won't need to deal with stuck backends or other weirdness
 
 #### Noteworthy differences vs Trident CSI
 
-- It is recommended to create a mapping for QoS policies if you use those. You can have those hard-coded in SolidFire Storage Classes, so that you don't have to do anything special: if "Silver" is QoS Policy ID `1` at your production site and `2` on your DR site cluster, simply prepare storage classes that are named the same, but use different QoS Policy IDs. If you don't do that, you can use "default" SolidFire QoS values for volumes and not manage QoS. Or you can ignore QoS management and retype volumes after failover if you discover you need to use that site longer than expected - SolidFire CSI can do that too
+- It is recommended to create a mapping for QoS policies if you use those. You can have those hard-coded in SolidFire Storage Classes, so that you don't have to do anything special: if "Silver" is QoS Policy ID `1` at your production site and `2` on your DR site cluster, simply prepare storage classes that are named the same, but use different QoS Policy IDs. If you don't do that, you can use "default" SolidFire QoS values for volumes and not manage QoS. Or you can ignore QoS management and retype volumes after failover if you discover you need to use that site longer than expected - SolidFire CSI can do that too.
 
 #### Kubernetes Volume Snapshot and Volume Group Snapshot replication
 
@@ -136,7 +136,8 @@ With SolidFire CSI you won't need to deal with stuck backends or other weirdness
 
 If your SolidFire cluster is shared by several Kubernetes clusters, you should consider if your failover scenarios should include just some of the tenants (two or more Kubernetes clusters) or all tenants (all Kubernetes clusters, or single Kubernetes cluster).
 - Different Kubernetes clusters should use SolidFire each with own SolidFire account (tenant) identity.
-- For granular failover (of individual SolidFire tenants), you need to flip just volume pairs owned by those tenants. Longhorny is suggested for monitoring because while it can flip the direction of replication, it does it for *all paired volumes* (and hence all tenants). It would need to enhanced to filter by tenant account ID to be able to used for simple tenant(s)-based site failover. Of course, that can be implemented, but it hasn't been done yet
+- For granular failover (of individual SolidFire tenants), you need to flip just volume pairs owned by those tenants. Longhorny is suggested for monitoring because while it can flip the direction of replication, it does it for *all paired volumes* (and hence all tenants). It would need to enhanced to filter by tenant account ID to be able to used for simple tenant(s)-based site failover. Of course, that can be implemented, but it hasn't been done yet because I've never heard of anyone who wanted to provide that level of failover granularity.
+- If you have X tenants on site A and replicate their volumes to site B, create X tenants on site B as well, otherwise per-tenant Storage Classes could not be mapped to the remote site 1:1 
 
 #### Integration with backup tools (Velero, Kasten)
 
