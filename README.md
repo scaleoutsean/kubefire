@@ -180,7 +180,7 @@ The process is:
 - Before site fails
   - Run the state export script and `scp` or `S3 PUT` resulting JSON to a 3rd site or destination site. This can run automatically (every 30 minutes, for example), depending on how your storage pairing schedule/frequency - it's better to do storage pairing and replication on same schedule
 - After site fails (failover to DR site)
-  - Flip SolidFire site's volumes to `readWrite` mode (use Longhorny or own script (you can re-use Longhorny code))
+  - Flip SolidFire site's volumes to `readWrite` mode (use Longhorny or own script (you can re-use Longhorny code) - **remember** that Longhorny flips all relationships; you may want to flip just the tenant(s) included in SolidFire CSI configuration)
   - Run Kustomize script on JSON state file
   - Commit the DR Kustomize directory to Git (if using ArgoCD) OR run `kubectl apply -k ./dr-overlay/` directly
   - Optionally inject some voume metadata attributes to volumes on DR site using `ModifyVolume` API call 
